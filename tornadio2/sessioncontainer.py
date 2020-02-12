@@ -1,3 +1,4 @@
+Learn more or give us feedback
 # -*- coding: utf-8 -*-
 #
 # Copyright: (c) 2011 by the Serge S. Koval, see AUTHORS for more details.
@@ -17,7 +18,6 @@
 """
     tornadio2.sessioncontainer
     ~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     Simple heapq-based session implementation with sliding expiration window
     support.
 """
@@ -31,8 +31,9 @@ from random import random
 def _random_key():
     """Return random session key"""
     i = md5()
-    i.update('%s%s' % (random(), time()))
-    return i.hexdigest()
+    # Python 3 requires bytes not string, hence the encode
+    i.update(('%s%s' % (random(), time())).encode('utf-8'))
+    return i.hexdigest().encode('utf-8')
 
 
 class SessionBase(object):
@@ -42,7 +43,6 @@ class SessionBase(object):
 
     def __init__(self, session_id=None, expiry=None):
         """Constructor.
-
         ``session_id``
             Optional session id. If not provided, will generate
             new session id.
@@ -71,8 +71,13 @@ class SessionBase(object):
         """Triggered when object was expired or deleted."""
         pass
 
+    # Python 2
     def __cmp__(self, other):
         return cmp(self.expiry_date, other.expiry_date)
+
+    # Python 3
+    def __lt__(self, other):
+        return self.expiry_date < other.expiry_date
 
     def __repr__(self):
         return '%f %s %d' % (getattr(self, 'expiry_date', -1),
@@ -87,7 +92,6 @@ class SessionContainer(object):
 
     def add(self, session):
         """Add session to the container.
-
         `session`
             Session object
         """
@@ -98,7 +102,6 @@ class SessionContainer(object):
 
     def get(self, session_id):
         """Return session object or None if it is not available
-
         `session_id`
             Session identifier
         """
@@ -106,7 +109,6 @@ class SessionContainer(object):
 
     def remove(self, session_id):
         """Remove session object from the container
-
         `session_id`
             Session identifier
         """
@@ -122,7 +124,6 @@ class SessionContainer(object):
 
     def expire(self, current_time=None):
         """Expire any old entries
-
         `current_time`
             Optional time to be used to clean up queue (can be used in unit tests)
         """

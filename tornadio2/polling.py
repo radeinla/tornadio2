@@ -17,16 +17,21 @@
 """
     tornadio2.polling
     ~~~~~~~~~~~~~~~~~
-
     This module implements socket.io polling transports.
 """
 import time
 import logging
-import urllib
+try:
+    from urllib import unquote_plus  # Python 2
+except ImportError:
+    from urllib.parse import unquote_plus  # Python 3
 
 from tornado.web import HTTPError, asynchronous
 
 from tornadio2 import proto, preflight, stats
+
+
+logger = logging.getLogger('tornadio2.polling')
 
 
 class TornadioPollingHandlerBase(preflight.PreflightHandler):
@@ -35,7 +40,7 @@ class TornadioPollingHandlerBase(preflight.PreflightHandler):
         self.server = server
         self.session = None
 
-        logging.debug('Initializing %s transport.' % self.name)
+        logger.debug('Initializing %s transport.' % self.name)
 
     def _get_session(self, session_id):
         """Get session if exists and checks if session is closed.
@@ -167,7 +172,7 @@ class TornadioXHRPollingHandler(TornadioPollingHandlerBase):
         try:
             self.send_messages([proto.noop()])
         except Exception:
-            logging.debug('Exception', exc_info=True)
+            logger.debug('Exception', exc_info=True)
         finally:
             self._detach()
 
@@ -199,14 +204,13 @@ class TornadioXHRPollingHandler(TornadioPollingHandlerBase):
         try:
             self.finish()
         except Exception:
-            logging.debug('Exception', exc_info=True)
+            logger.debug('Exception', exc_info=True)
         finally:
             self._detach()
 
 
 class TornadioHtmlFileHandler(TornadioPollingHandlerBase):
     """IE HtmlFile protocol implementation.
-
     Uses hidden frame to stream data from the server in one connection.
     """
     # Transport name
@@ -251,7 +255,7 @@ class TornadioHtmlFileHandler(TornadioPollingHandlerBase):
         try:
             self.finish()
         except Exception:
-            logging.debug('Exception', exc_info=True)
+            logger.debug('Exception', exc_info=True)
         finally:
             self._detach()
 
@@ -288,11 +292,11 @@ class TornadioJSONPHandler(TornadioXHRPollingHandler):
 
             # IE XDomainRequest support
             if not data.startswith('d='):
-                logging.error('Malformed JSONP POST request')
+                logger.error('Malformed JSONP POST request')
                 raise HTTPError(403)
 
             # Grab data
-            data = urllib.unquote_plus(data[2:]).decode('utf-8')
+            data = unquote_plus(data[2:]).decode('utf-8')
 
             # If starts with double quote, it is json encoded (socket.io workaround)
             if data.startswith(u'"'):

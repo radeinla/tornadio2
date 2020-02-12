@@ -17,10 +17,14 @@
 """
     tornadio2.proto
     ~~~~~~~~~~~~~~~
-
     Socket.IO protocol related functions
 """
 import logging
+import sys
+
+
+logger = logging.getLogger('tornadio2.proto')
+
 
 try:
     import simplejson as json
@@ -35,6 +39,14 @@ except ImportError:
                 return float(o)
             return super(DecimalEncoder, self).default(o)
     json_decimal_args = {"cls": DecimalEncoder}
+
+
+if sys.version_info[0] == 2:
+    text_type = unicode
+    string_types = (str, unicode)
+else:
+    text_type = str
+    string_types = (str,)
 
 # Packet ids
 DISCONNECT = '0'
@@ -53,7 +65,6 @@ FRAME_SEPARATOR = u'\ufffd'
 
 def disconnect(endpoint=None):
     """Generate disconnect packet.
-
     `endpoint`
         Optional endpoint name
     """
@@ -64,7 +75,6 @@ def disconnect(endpoint=None):
 
 def connect(endpoint=None):
     """Generate connect packet.
-
     `endpoint`
         Optional endpoint name
     """
@@ -79,9 +89,8 @@ def heartbeat():
     return u'2::'
 
 
-def message(endpoint, msg, message_id=None):
+def message(endpoint, msg, message_id=None, force_json=False):
     """Generate message packet.
-
     `endpoint`
         Optional endpoint name
     `msg`
@@ -89,29 +98,34 @@ def message(endpoint, msg, message_id=None):
         If object or dictionary, will json encode and send as is.
     `message_id`
         Optional message id for ACK
+    `force json`
+        Disregard msg type and send the message with JSON type. Usefull for already
+        JSON encoded strings.
     """
-    if (not isinstance(msg, (unicode, str)) and
-        isinstance(msg, (object, dict))):
-        if msg is not None:
-            return u'4:%s:%s:%s' % (
-                message_id or '',
-                endpoint or '',
-                json.dumps(msg, **json_decimal_args)
-                )
-        else:
-            # TODO: Log something?
-            return u''
+    if msg is None:
+        # TODO: Log something ?
+        return u''
+
+    packed_message_tpl = u"%(kind)s:%(message_id)s:%(endpoint)s:%(msg)s"
+    packed_data = {'endpoint': endpoint or u'',
+                   'message_id': message_id or u''}
+
+    # Trying to send a dict over the wire ?
+    if not isinstance(msg, string_types) and isinstance(msg, (dict, object)):
+        packed_data.update({'kind': JSON,
+                            'msg': json.dumps(msg, **json_decimal_args)})
+
+    # for all other classes, including objects. Call str(obj)
+    # and respect forced JSON if requested
     else:
-        return u'3:%s:%s:%s' % (
-            message_id or u'',
-            endpoint or u'',
-            msg if isinstance(msg, unicode) else str(msg).decode('utf-8')
-            )
+        packed_data.update({'kind': MESSAGE if not force_json else JSON,
+                            'msg': msg if isinstance(msg, text_type) else str(msg).decode('utf-8')})
+
+    return packed_message_tpl % packed_data
 
 
 def event(endpoint, name, message_id, *args, **kwargs):
     """Generate event message.
-
     `endpoint`
         Optional endpoint name
     `name`
@@ -130,7 +144,7 @@ def event(endpoint, name, message_id, *args, **kwargs):
             )
 
         if kwargs:
-            logging.error('Can not generate event() with args and kwargs.')
+            logger.error('Can not generate event() with args and kwargs.')
     else:
         evt = dict(
             name=name,
@@ -146,7 +160,6 @@ def event(endpoint, name, message_id, *args, **kwargs):
 
 def ack(endpoint, message_id, ack_response=None):
     """Generate ACK packet.
-
     `endpoint`
         Optional endpoint name
     `message_id`
@@ -170,7 +183,6 @@ def ack(endpoint, message_id, ack_response=None):
 
 def error(endpoint, reason, advice=None):
     """Generate error packet.
-
     `endpoint`
         Optional endpoint name
     `reason`
@@ -190,7 +202,6 @@ def noop():
 
 def json_dumps(msg):
     """Dump object as a json string
-
     `msg`
         Object to dump
     """
@@ -199,7 +210,6 @@ def json_dumps(msg):
 
 def json_load(msg):
     """Load json-encoded object
-
     `msg`
         json encoded object
     """
@@ -208,13 +218,11 @@ def json_load(msg):
 
 def decode_frames(data):
     """Decode socket.io encoded messages. Returns list of packets.
-
     `data`
         encoded messages
-
     """
     # Single message - nothing to decode here
-    assert isinstance(data, unicode), 'frame is not unicode'
+    assert isinstance(data, text_type), 'frame is not unicode'
 
     if not data.startswith(FRAME_SEPARATOR):
         return [data]
@@ -244,7 +252,6 @@ def decode_frames(data):
 # Encode expects packets in unicode
 def encode_frames(packets):
     """Encode list of packets.
-
     `packets`
         List of packets to encode
     """

@@ -17,7 +17,6 @@
 """
     tornadio2.server
     ~~~~~~~~~~~~~~~~
-
     Implements handy wrapper to start FlashSocket server (if FlashSocket
     protocol is enabled). Shamesly borrowed from the SocketTornad.IO project.
 """
@@ -28,6 +27,9 @@ from tornado import ioloop
 from tornado.httpserver import HTTPServer
 
 from tornadio2.flashserver import FlashPolicyServer
+
+
+logger = logging.getLogger('tornadio2.server')
 
 
 class SocketServer(HTTPServer):
@@ -43,12 +45,10 @@ class SocketServer(HTTPServer):
                  auto_start=True
                  ):
         """Initializes the server with the given request callback.
-
         If you use pre-forking/start() instead of the listen() method to
         start your server, you should not pass an IOLoop instance to this
         constructor. Each pre-forked child process will create its own
         IOLoop instance after the forking process.
-
         `application`
             Tornado application
         `no_keep_alive`
@@ -82,23 +82,23 @@ class SocketServer(HTTPServer):
                             xheaders,
                             ssl_options)
 
-        logging.info('Starting up tornadio server on port \'%s\'',
+        logger.info('Starting up tornadio server on port \'%s\'',
                      socket_io_port)
 
         self.listen(socket_io_port, socket_io_address)
 
         if flash_policy_file is not None and flash_policy_port is not None:
             try:
-                logging.info('Starting Flash policy server on port \'%d\'',
+                logger.info('Starting Flash policy server on port \'%d\'',
                              flash_policy_port)
 
                 FlashPolicyServer(
                     io_loop=io_loop,
                     port=flash_policy_port,
                     policy_file=flash_policy_file)
-            except Exception, ex:
-                logging.error('Failed to start Flash policy server: %s', ex)
+            except Exception as ex:
+                logger.error('Failed to start Flash policy server: %s', ex)
 
         if auto_start:
-            logging.info('Entering IOLoop...')
+            logger.info('Entering IOLoop...')
             io_loop.start()

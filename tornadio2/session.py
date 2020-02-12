@@ -17,12 +17,17 @@
 """
     tornadio2.session
     ~~~~~~~~~~~~~~~~~
-
     Active TornadIO2 connection session.
 """
 
-import urlparse
+try:
+    from urlparse import urlparse  # Python 2
+except ImportError:
+    from urllib.parse import urlparse  # Python 3
 import logging
+
+
+logger = logging.getLogger('tornadio2.session')
 
 from tornado.web import HTTPError
 
@@ -31,11 +36,8 @@ from tornadio2 import sessioncontainer, proto, periodic, stats
 
 class ConnectionInfo(object):
     """Connection information object.
-
     Will be passed to the ``on_open`` handler of your connection class.
-
     Has few properties:
-
     `ip`
         Caller IP address
     `cookies`
@@ -62,9 +64,7 @@ class ConnectionInfo(object):
 
 class Session(sessioncontainer.SessionBase):
     """Socket.IO session implementation.
-
     Session has some publicly accessible properties:
-
     `server`
         Server association. Server contains io_loop instance, settings, etc.
     `remote_ip`
@@ -74,7 +74,6 @@ class Session(sessioncontainer.SessionBase):
     """
     def __init__(self, conn, server, request, expiry=None):
         """Session constructor.
-
         `conn`
             Default connection class
         `server`
@@ -100,7 +99,7 @@ class Session(sessioncontainer.SessionBase):
         self.conn = conn(self)
 
         # Call on_open.
-        info = ConnectionInfo(request.remote_ip,
+        self.info = ConnectionInfo(request.remote_ip,
                               request.arguments,
                               request.cookies)
 
@@ -115,14 +114,13 @@ class Session(sessioncontainer.SessionBase):
         # Endpoints
         self.endpoints = dict()
 
-        result = self.conn.on_open(info)
+        result = self.conn.on_open(self.info)
         if result is not None and not result:
             raise HTTPError(401)
 
     # Session callbacks
     def on_delete(self, forced):
         """Session expiration callback
-
         `forced`
             If session item explicitly deleted, forced will be set to True. If
             item expired, will be set to False.
@@ -136,7 +134,6 @@ class Session(sessioncontainer.SessionBase):
     # Add session
     def set_handler(self, handler):
         """Set active handler for the session
-
         `handler`
             Associate active Tornado handler with the session
         """
@@ -145,8 +142,8 @@ class Session(sessioncontainer.SessionBase):
             return False
 
         # If IP address don't match - refuse connection
-        if handler.request.remote_ip != self.remote_ip:
-            logging.error('Attempted to attach to session %s (%s) from different IP (%s)' % (
+        if self.server.settings['verify_remote_ip'] and handler.request.remote_ip != self.remote_ip:
+            logger.error('Attempted to attach to session %s (%s) from different IP (%s)' % (
                           self.session_id,
                           self.remote_ip,
                           handler.request.remote_ip
@@ -164,7 +161,6 @@ class Session(sessioncontainer.SessionBase):
 
     def remove_handler(self, handler):
         """Remove active handler from the session
-
         `handler`
             Handler to remove
         """
@@ -179,11 +175,10 @@ class Session(sessioncontainer.SessionBase):
 
     def send_message(self, pack):
         """Send socket.io encoded message
-
         `pack`
             Encoded socket.io message
         """
-        logging.debug('<<< ' + pack)
+        logger.debug('<<< ' + pack)
 
         # TODO: Possible optimization if there's on-going connection - there's no
         # need to queue messages?
@@ -210,7 +205,6 @@ class Session(sessioncontainer.SessionBase):
     # Close connection with all endpoints or just one endpoint
     def close(self, endpoint=None):
         """Close session or endpoint connection.
-
         `endpoint`
             If endpoint is passed, will close open endpoint connection. Otherwise
             will close whole socket.
@@ -282,39 +276,35 @@ class Session(sessioncontainer.SessionBase):
     # Endpoints
     def connect_endpoint(self, url):
         """Connect endpoint from URL.
-
         `url`
             socket.io endpoint URL.
         """
-        urldata = urlparse.urlparse(url)
+        urldata = urlparse(url)
 
         endpoint = urldata.path
 
-        conn_class = self.conn.get_endpoint(endpoint)
-        if conn_class is None:
-            logging.error('There is no handler for endpoint %s' % endpoint)
-            return
+        conn = self.endpoints.get(endpoint, None)
+        if conn is None:
+            conn_class = self.conn.get_endpoint(endpoint)
+            if conn_class is None:
+                logger.error('There is no handler for endpoint %s' % endpoint)
+                return
 
-        conn = conn_class(self, endpoint)
-        self.endpoints[endpoint] = conn
+            conn = conn_class(self, endpoint)
+            self.endpoints[endpoint] = conn
 
         self.send_message(proto.connect(endpoint))
 
-        args = urlparse.parse_qs(urldata.query)
-
-        info = ConnectionInfo(self.remote_ip, args, dict())
-
-        if conn.on_open(info) == False:
+        if conn.on_open(self.info) == False:
             self.disconnect_endpoint(endpoint)
 
     def disconnect_endpoint(self, endpoint):
         """Disconnect endpoint
-
         `endpoint`
             endpoint name
         """
         if endpoint not in self.endpoints:
-            logging.error('Invalid endpoint for disconnect %s' % endpoint)
+            logger.error('Invalid endpoint for disconnect %s' % endpoint)
             return
 
         conn = self.endpoints[endpoint]
@@ -326,7 +316,6 @@ class Session(sessioncontainer.SessionBase):
 
     def get_connection(self, endpoint):
         """Get connection object.
-
         `endpoint`
             Endpoint name. If set to None, will return default connection object.
         """
@@ -338,12 +327,11 @@ class Session(sessioncontainer.SessionBase):
     # Message handler
     def raw_message(self, msg):
         """Socket.IO message handler.
-
         `msg`
             Raw socket.io message to handle
         """
         try:
-            logging.debug('>>> ' + msg)
+            logger.debug('>>> ' + msg)
 
             parts = msg.split(':', 3)
             if len(parts) == 3:
@@ -364,13 +352,13 @@ class Session(sessioncontainer.SessionBase):
                     self.connect_endpoint(msg_endpoint)
                 else:
                     # TODO: Disconnect?
-                    logging.error('Invalid connect without endpoint')
+                    logger.error('Invalid connect without endpoint')
                 return
 
             # All other packets need endpoints
             conn = self.get_connection(msg_endpoint)
             if conn is None:
-                logging.error('Invalid endpoint: %s' % msg_endpoint)
+                logger.error('Invalid endpoint: %s' % msg_endpoint)
                 return
 
             if msg_type == proto.HEARTBEAT:
@@ -403,7 +391,7 @@ class Session(sessioncontainer.SessionBase):
                 # in args
                 if len(args) == 1 and isinstance(args[0], dict):
                     # Fix for the http://bugs.python.org/issue4978 for older Python versions
-                    str_args = dict((str(x), y) for x, y in args[0].iteritems())
+                    str_args = dict((str(x), y) for x, y in args[0].items())
 
                     ack_response = conn.on_event(event['name'], kwargs=str_args)
                 else:
@@ -425,11 +413,11 @@ class Session(sessioncontainer.SessionBase):
                 conn.deque_ack(int(ack_data[0]), data)
             elif msg_type == proto.ERROR:
                 # TODO: Pass it to handler?
-                logging.error('Incoming error: %s' % msg_data)
+                logger.error('Incoming error: %s' % msg_data)
             elif msg_type == proto.NOOP:
                 pass
-        except Exception, ex:
-            logging.exception(ex)
+        except Exception as ex:
+            logger.exception(ex)
 
             # TODO: Add global exception callback?
 

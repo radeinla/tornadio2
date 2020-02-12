@@ -17,7 +17,6 @@
 """
     tornadio2.router
     ~~~~~~~~~~~~~~~~
-
     Transport protocol router and main entry point for all socket.io clients.
 """
 
@@ -58,7 +57,12 @@ DEFAULT_SETTINGS = {
     'global_heartbeats': True,
     # Client timeout adjustment in seconds. If you see your clients disconnect without a
     # reason, increase this value.
-    'client_timeout': 5
+    'client_timeout': 5,
+    # Verify remote IP. May want to disable this for some setups. Some networks send traffic
+    # from same client, different IP each time. If you set this to False, TornadIO will not
+    # check the session ID against IP address. This has consequences for spoofing sessions and
+    # so on, so use with extreme caution.
+    'verify_remote_ip': True,
     }
 
 
@@ -82,7 +86,7 @@ class HandshakeHandler(preflight.PreflightHandler):
 
             # TODO: Fix heartbeat timeout. For now, it is adding 5 seconds to the client timeout.
             data = '%s:%d:%d:%s' % (
-                sess.session_id,
+                sess.session_id.decode('utf-8'),
                 # TODO: Fix me somehow a well. 0.9.2 will drop connection is no
                 # heartbeat was sent over
                 settings['heartbeat_interval'] + settings['client_timeout'],
@@ -119,7 +123,6 @@ class TornadioRouter(object):
                  namespace='socket.io',
                  io_loop=None):
         """Constructor.
-
         `connection`
             SocketConnection class instance
         `user_settings`
@@ -148,7 +151,7 @@ class TornadioRouter(object):
         # Sessions
         self._sessions = sessioncontainer.SessionContainer()
 
-        check_interval = self.settings['session_check_interval']
+        check_interval = self.settings['session_check_interval'] * 1000
         self._sessions_cleanup = ioloop.PeriodicCallback(self._sessions.expire,
                                                          check_interval,
                                                          self.io_loop)
@@ -192,7 +195,6 @@ class TornadioRouter(object):
 
     def create_session(self, request):
         """Creates new session object and returns it.
-
         `request`
             Request that created the session. Will be used to get query string
             parameters and cookies.

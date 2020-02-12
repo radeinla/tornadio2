@@ -17,11 +17,9 @@
 """
     tornadio2.flashserver
     ~~~~~~~~~~~~~~~~~~~~~
-
     Flash Socket policy server implementation. Merged with minor modifications
     from the SocketTornad.IO project.
 """
-from __future__ import with_statement
 
 import socket
 import errno
@@ -38,7 +36,6 @@ class FlashPolicyServer(object):
                  port=843,
                  policy_file='flashpolicy.xml'):
         """Constructor.
-
         `io_loop`
             IOLoop instance
         `port`
@@ -64,7 +61,7 @@ class FlashPolicyServer(object):
         while True:
             try:
                 connection, address = sock.accept()
-            except socket.error, ex:
+            except socket.error as ex:
                 if ex[0] not in (errno.EWOULDBLOCK, errno.EAGAIN):
                     raise
                 return
