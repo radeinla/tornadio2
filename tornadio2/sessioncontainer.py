@@ -1,4 +1,3 @@
-Learn more or give us feedback
 # -*- coding: utf-8 -*-
 #
 # Copyright: (c) 2011 by the Serge S. Koval, see AUTHORS for more details.
